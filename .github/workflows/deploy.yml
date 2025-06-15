@@ -37,19 +37,14 @@ jobs:
       run: |
         gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
 
-    # Build and push Docker image with additional debugging
+    # Build and push Docker image
     - name: Build and push Docker image
       run: |
         IMAGE_URL="${REGION}-docker.pkg.dev/$PROJECT_ID/docker-repo/$SERVICE_NAME:${{ github.sha }}"
         echo "Building image: $IMAGE_URL"
         docker build -t $IMAGE_URL .
         echo "Pushing image: $IMAGE_URL"
-        
-        # Verify authentication status
-        gcloud auth list
-        
-        # Try pushing with verbose output
-        docker push $IMAGE_URL --debug
+        docker push $IMAGE_URL
         
         echo "IMAGE_URL=$IMAGE_URL" >> $GITHUB_ENV
 
