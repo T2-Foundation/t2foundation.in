@@ -7,7 +7,7 @@ on:
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   SERVICE_NAME: t2foundation-website
-  REGION: asia-south2
+  REGION: asia-southeast1
   DOMAIN_NAME: ${{ secrets.DOMAIN_NAME }}
 
 jobs:
