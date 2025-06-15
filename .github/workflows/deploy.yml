@@ -62,71 +62,14 @@ jobs:
         URL=$(gcloud run services describe $SERVICE_NAME --region $REGION --format 'value(status.url)')
         echo "url=$URL" >> $GITHUB_OUTPUT
 
-    # Set up domain mapping
-    - name: Set up domain mapping
+    # Note about manual domain mapping
+    - name: Domain Mapping Information
       run: |
-        # Check if domain mapping exists
-        if ! gcloud run domain-mappings describe --domain=$DOMAIN_NAME --platform=managed --region=$REGION 2>/dev/null; then
-          echo "Creating domain mapping..."
-          gcloud run domain-mappings create \
-            --service=$SERVICE_NAME \
-            --domain=$DOMAIN_NAME \
-            --platform=managed \
-            --region=$REGION
-        fi
-        
-        # Wait briefly for domain mapping to be ready
-        sleep 10
-        
-        # Get the mapping details including IP address
-        MAPPING=$(gcloud run domain-mappings describe --domain=$DOMAIN_NAME --platform=managed --region=$REGION --format=json)
-        # Extract IP from resource records
-        IP_ADDRESS=$(echo $MAPPING | jq -r '.status.resourceRecords[] | select(.type=="A") | .rrdata')
-        echo "Domain mapping IP: $IP_ADDRESS"
-        echo "IP_ADDRESS=$IP_ADDRESS" >> $GITHUB_ENV
-
-    # Update DNS Records
-    - name: Update DNS Records
-      run: |
-        # Check if DNS zone exists
-        if ! gcloud dns managed-zones list --filter="name=t2foundation" 2>/dev/null | grep -q "t2foundation"; then
-          echo "Creating DNS zone..."
-          gcloud dns managed-zones create t2foundation \
-            --dns-name=$DOMAIN_NAME. \
-            --description="DNS zone for $DOMAIN_NAME"
-        fi
-        
-        # Update A record - start transaction
-        gcloud dns record-sets transaction start --zone=t2foundation
-        
-        # Check if apex A record exists
-        if gcloud dns record-sets list --zone=t2foundation --name="$DOMAIN_NAME." --type=A 2>/dev/null | grep -q "$DOMAIN_NAME."; then
-          echo "Removing existing A record..."
-          EXISTING_IP=$(gcloud dns record-sets list --zone=t2foundation --name="$DOMAIN_NAME." --type=A --format='value(rrdatas)')
-          gcloud dns record-sets transaction remove --zone=t2foundation --name="$DOMAIN_NAME." --type=A --ttl=300 "$EXISTING_IP"
-        fi
-        
-        # Add new A record
-        echo "Adding new A record pointing to $IP_ADDRESS..."
-        gcloud dns record-sets transaction add --zone=t2foundation --name="$DOMAIN_NAME." --type=A --ttl=300 "$IP_ADDRESS"
-        
-        # Set up www subdomain
-        if gcloud dns record-sets list --zone=t2foundation --name="www.$DOMAIN_NAME." --type=CNAME 2>/dev/null | grep -q "www.$DOMAIN_NAME."; then
-          echo "Removing existing CNAME record..."
-          EXISTING_CNAME=$(gcloud dns record-sets list --zone=t2foundation --name="www.$DOMAIN_NAME." --type=CNAME --format='value(rrdatas)')
-          gcloud dns record-sets transaction remove --zone=t2foundation --name="www.$DOMAIN_NAME." --type=CNAME --ttl=300 "$EXISTING_CNAME"
-        fi
-        
-        # Add new CNAME record
-        echo "Adding CNAME for www subdomain..."
-        gcloud dns record-sets transaction add --zone=t2foundation --name="www.$DOMAIN_NAME." --type=CNAME --ttl=300 "$DOMAIN_NAME."
-        
-        # Execute the transaction
-        gcloud dns record-sets transaction execute --zone=t2foundation
+        echo "Domain mapping is configured manually in the Google Cloud Console"
+        echo "Please ensure your custom domain $DOMAIN_NAME is properly mapped to this service"
         
     # Output deployment information
     - name: Output Deployment Info
       run: |
         echo "Deployed to Cloud Run at: ${{ steps.deploy.outputs.url }}"
-        echo "Custom domain: https://$DOMAIN_NAME"
-        echo "DNS configuration completed. Remember that DNS changes may take up to 24-48 hours to fully propagate globally."
+        echo "Custom domain (if configured): https://$DOMAIN_NAME"
