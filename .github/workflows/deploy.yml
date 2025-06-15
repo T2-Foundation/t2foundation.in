@@ -25,17 +25,6 @@ jobs:
         service_account_key: ${{ secrets.GCP_SA_KEY }}
         export_default_credentials: true
 
-    # Create or verify Artifact Repository
-    - name: Create Artifact Repository if not exists
-      run: |
-        if ! gcloud artifacts repositories describe docker-repo --location=$REGION 2>/dev/null; then
-          echo "Creating Artifact Repository..."
-          gcloud artifacts repositories create docker-repo \
-            --repository-format=docker \
-            --location=$REGION \
-            --description="Docker repository for t2foundation"
-        fi
-
     # Configure Docker authentication for artifact registry
     - name: Set up Docker auth for Artifact Registry
       run: |
