@@ -25,42 +25,42 @@ jobs:
         service_account_key: ${{ secrets.GCP_SA_KEY }}
         export_default_credentials: true
 
-    - name: Authorize Docker push
-      run: gcloud auth configure-docker
+    - name: Authorize Docker push for Artifact Registry
+      run: |
+        gcloud auth configure-docker asia-south2-docker.pkg.dev
+        gcloud artifacts repositories create $SERVICE_NAME \
+          --repository-format=docker \
+          --location=asia-south2 \
+          --description="Repository for Vue application" \
+          --quiet || true
 
     - name: Build and push Docker image
       run: |
-        docker build -t gcr.io/$PROJECT_ID/$SERVICE_NAME:${{ github.sha }} .
-        docker push gcr.io/$PROJECT_ID/$SERVICE_NAME:${{ github.sha }}
+        docker build -t asia-south2-docker.pkg.dev/$PROJECT_ID/$SERVICE_NAME/$SERVICE_NAME:${{ github.sha }} .
+        docker push asia-south2-docker.pkg.dev/$PROJECT_ID/$SERVICE_NAME/$SERVICE_NAME:${{ github.sha }}
 
     - name: Deploy to Cloud Run
       id: deploy
       run: |
         gcloud run deploy $SERVICE_NAME \
-          --image gcr.io/$PROJECT_ID/$SERVICE_NAME:${{ github.sha }} \
+          --image asia-south2-docker.pkg.dev/$PROJECT_ID/$SERVICE_NAME/$SERVICE_NAME:${{ github.sha }} \
           --platform managed \
           --region $REGION \
           --allow-unauthenticated
         
-        # Get the Cloud Run URL
         URL=$(gcloud run services describe $SERVICE_NAME --region $REGION --format 'value(status.url)')
-        echo "::set-output name=url::$URL"
+        echo "url=$URL" >> $GITHUB_OUTPUT
         
-        # Extract the IP address needed for DNS mapping
-        IP_ADDRESS=$(gcloud run domain-mappings describe --service=$SERVICE_NAME --region=$REGION --format='value(status.resourceRecords[0].rrdata)' 2>/dev/null || echo "")
-        
-        if [ -z "$IP_ADDRESS" ]; then
-          # If no mapping exists yet, create it
+        if ! gcloud run domain-mappings describe --service=$SERVICE_NAME --region=$REGION --domain=$DOMAIN_NAME 2>/dev/null; then
           echo "Creating domain mapping..."
-          gcloud beta run domain-mappings create \
+          gcloud run domain-mappings create \
             --service $SERVICE_NAME \
             --domain $DOMAIN_NAME \
             --region $REGION
-            
-          # Now get the IP address
-          IP_ADDRESS=$(gcloud run domain-mappings describe --service=$SERVICE_NAME --domain=$DOMAIN_NAME --region=$REGION --format='value(status.resourceRecords[0].rrdata)')
         fi
         
+        MAPPING_INFO=$(gcloud run domain-mappings describe --service=$SERVICE_NAME --region=$REGION --domain=$DOMAIN_NAME --format=json)
+        IP_ADDRESS=$(echo $MAPPING_INFO | jq -r '.status.resourceRecords[] | select(.type=="A") | .rrdata')
         echo "IP_ADDRESS=$IP_ADDRESS" >> $GITHUB_ENV
 
     - name: Update DNS Records
@@ -71,25 +71,18 @@ jobs:
         
         gcloud dns record-sets transaction start --zone=t2foundation
         
-        # Check if the A record exists
         if gcloud dns record-sets list --zone=t2foundation --name="$DOMAIN_NAME." --type=A | grep "$DOMAIN_NAME."; then
-          # Update the existing A record
           gcloud dns record-sets transaction remove --zone=t2foundation --name="$DOMAIN_NAME." --type=A --ttl=300 "$(gcloud dns record-sets list --zone=t2foundation --name="$DOMAIN_NAME." --type=A --format='value(rrdatas)')"
         fi
         
-        # Add the new A record
         gcloud dns record-sets transaction add --zone=t2foundation --name="$DOMAIN_NAME." --type=A --ttl=300 "${{ env.IP_ADDRESS }}"
         
-        # Check if the CNAME record exists for www
         if gcloud dns record-sets list --zone=t2foundation --name="www.$DOMAIN_NAME." --type=CNAME | grep "www.$DOMAIN_NAME."; then
-          # Update the existing CNAME record
           gcloud dns record-sets transaction remove --zone=t2foundation --name="www.$DOMAIN_NAME." --type=CNAME --ttl=300 "$(gcloud dns record-sets list --zone=t2foundation --name="www.$DOMAIN_NAME." --type=CNAME --format='value(rrdatas)')"
         fi
         
-        # Add the new CNAME record
         gcloud dns record-sets transaction add --zone=t2foundation --name="www.$DOMAIN_NAME." --type=CNAME --ttl=300 "$DOMAIN_NAME."
         
-        # Execute the transaction
         gcloud dns record-sets transaction execute --zone=t2foundation
         
     - name: Output Deployment Info
