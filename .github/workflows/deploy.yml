@@ -66,19 +66,20 @@ jobs:
     - name: Set up domain mapping
       run: |
         # Check if domain mapping exists
-        if ! gcloud run domain-mappings describe --service=$SERVICE_NAME --region=$REGION --domain=$DOMAIN_NAME 2>/dev/null; then
+        if ! gcloud run domain-mappings describe --domain=$DOMAIN_NAME --platform=managed --region=$REGION 2>/dev/null; then
           echo "Creating domain mapping..."
           gcloud run domain-mappings create \
-            --service $SERVICE_NAME \
-            --domain $DOMAIN_NAME \
-            --region $REGION
+            --service=$SERVICE_NAME \
+            --domain=$DOMAIN_NAME \
+            --platform=managed \
+            --region=$REGION
         fi
         
         # Wait briefly for domain mapping to be ready
         sleep 10
         
         # Get the mapping details including IP address
-        MAPPING=$(gcloud run domain-mappings describe --service=$SERVICE_NAME --region=$REGION --domain=$DOMAIN_NAME --format=json)
+        MAPPING=$(gcloud run domain-mappings describe --domain=$DOMAIN_NAME --platform=managed --region=$REGION --format=json)
         # Extract IP from resource records
         IP_ADDRESS=$(echo $MAPPING | jq -r '.status.resourceRecords[] | select(.type=="A") | .rrdata')
         echo "Domain mapping IP: $IP_ADDRESS"
